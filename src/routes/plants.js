@@ -27,11 +27,12 @@ function getImagesFromFolder(folderUrl, limit = null) {
 function localizePlant(plant, lang) {
   const p = { ...plant };
   const fields = ['description', 'habitat', 'harvest_period', 'preparation'];
+  // Câmpul unificat "name" — preia din limba cerută
+  p.name = lang === 'en' ? (p.name_en || p.name_ro) : p.name_ro;
   if (lang === 'en') {
     for (const f of fields) {
       if (p[`${f}_en`]) p[f] = p[`${f}_en`];
     }
-    if (p.name_en) p.name = p.name_en;
   }
   // Șterge câmpurile _en din response
   for (const f of fields) delete p[`${f}_en`];

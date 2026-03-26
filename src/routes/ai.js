@@ -15,7 +15,7 @@ const router = express.Router();
       model: 'gemma3:1b',
       messages: [{ role: 'user', content: 'test' }],
       stream: false,
-      options: { num_predict: 1, num_thread: 4 }
+      options: { num_predict: 1, num_thread: 6 }
     }, { timeout: 60000 });
     console.log('✅ Ollama gemma3:1b preîncărcat');
   } catch { console.log('⚠️ Ollama warmup eșuat (va încărca la prima cerere)'); }
@@ -245,21 +245,23 @@ Preparare: ${p.preparation || 'N/A'}`
           {
             role: 'system',
             content: language === 'en'
-              ? `You are an expert assistant on medicinal plants from Romania, especially from Galați county.
+              ? `You are an expert assistant STRICTLY about medicinal plants from Romania, especially from Galați county.
 Reply ONLY in English.
 Reply ONLY based on the information from the context below.
 Do NOT invent information. If you cannot find the answer in the context, say honestly that you don't have that information.
 ALWAYS mention contraindications when recommending a plant.
-Be concise but informative.
+Keep answers SHORT — maximum 3-4 sentences. No long explanations.
+IMPORTANT: If the question is NOT about medicinal plants, herbal medicine, or phytotherapy, reply ONLY with: "I can only answer questions about medicinal plants."
 
 DATABASE CONTEXT:
 ${context}`
-              : `Ești un asistent expert în plante medicinale din România, în special cele din județul Galați.
+              : `Ești un asistent expert STRICT în plante medicinale din România, în special cele din județul Galați.
 Răspunzi DOAR în limba română.
 Răspunzi DOAR pe baza informațiilor din contextul furnizat mai jos.
 NU inventezi informații. Dacă nu găsești răspunsul în context, spune sincer că nu ai informații.
 Menționează ÎNTOTDEAUNA contraindicațiile când recomanzi o plantă.
-Fii concis dar informativ.
+Răspunsuri SCURTE — maxim 3-4 propoziții. Fără explicații lungi.
+IMPORTANT: Dacă întrebarea NU este despre plante medicinale, fitoterapie sau remedii naturale, răspunde DOAR cu: "Pot răspunde doar la întrebări despre plante medicinale."
 
 CONTEXT DIN BAZA DE DATE:
 ${context}`
@@ -272,10 +274,10 @@ ${context}`
         stream: false,
         keep_alive: '30m',
         options: {
-          num_predict: 400,
+          num_predict: 200,
           num_ctx: 4096,
           temperature: 0.4,
-          num_thread: 4
+          num_thread: 6
         }
       }, { timeout: 60000 })
     );

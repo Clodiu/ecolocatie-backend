@@ -5,7 +5,7 @@ Folosește modelul .h5 (TensorFlow/Keras) antrenat pe cele 19 categorii
 Utilizare:
   python classify.py <cale_imagine> [model.h5]
 
-Dacă modelul lipsește, se folosește model_cnn_custom.h5 (default).
+Dacă modelul lipsește, se folosește model_densenet121.h5 (default).
 """
 import sys
 import json
@@ -41,7 +41,7 @@ AVAILABLE_MODELS = [
     'model_resnet50.h5',
 ]
 
-DEFAULT_MODEL = 'model_cnn_custom.h5'
+DEFAULT_MODEL = 'model_densenet121.h5'
 
 def classify(image_path, model_filename):
     """

@@ -211,10 +211,11 @@ router.post('/', auth, upload.single('image'), async (req, res) => {
     const folder = poiFolderPath(poiId);
     fs.mkdirSync(folder, { recursive: true });
 
-    // Muta imaginea din temp in folderul POI-ului
+    // Muta imaginea din temp in folderul POI-ului si sterge originalul
     if (req.file) {
       const dest = path.join(folder, req.file.filename);
-      fs.renameSync(req.file.path, dest);
+      fs.copyFileSync(req.file.path, dest);
+      try { fs.unlinkSync(req.file.path); } catch {}
     }
 
     // Obtine numele plantei pentru notificari

@@ -20,7 +20,7 @@ INSERT INTO config (
   'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   '&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors',
   45.4800000, 45.3900000, 28.0800000, 27.9300000,
-  'model_cnn_custom.h5'
+  'model_densenet121.h5'
 );
 
 -- ============================================

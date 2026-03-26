@@ -38,14 +38,15 @@ router.post('/register', upload.single('image'), async (req, res) => {
     const userId = result.insertId;
     let profileImage = null;
 
-    // Daca s-a trimis imagine de profil, o salvam
+    // Daca s-a trimis imagine de profil, o salvam si stergem temporarul
     if (req.file) {
       const userDir = path.join(UPLOADS_ROOT, 'images', 'users', String(userId));
       fs.mkdirSync(userDir, { recursive: true });
 
       const ext = path.extname(req.file.originalname);
       const filename = `avatar${ext}`;
-      fs.renameSync(req.file.path, path.join(userDir, filename));
+      fs.copyFileSync(req.file.path, path.join(userDir, filename));
+      try { fs.unlinkSync(req.file.path); } catch {}
 
       profileImage = `/images/users/${userId}/${filename}`;
       await db.query('UPDATE users SET profile_image = ? WHERE id = ?', [profileImage, userId]);
@@ -211,10 +212,11 @@ router.put('/profile-image', auth, upload.single('image'), async (req, res) => {
       }
     } catch { /* folderul nou, nimic de sters */ }
 
-    // Muta imaginea in folderul userului
+    // Muta imaginea in folderul userului si sterge temporarul
     const ext = path.extname(req.file.originalname);
     const filename = `avatar${ext}`;
-    fs.renameSync(req.file.path, path.join(userDir, filename));
+    fs.copyFileSync(req.file.path, path.join(userDir, filename));
+    try { fs.unlinkSync(req.file.path); } catch {}
 
     const profileUrl = `/images/users/${req.user.id}/${filename}`;
     await db.query('UPDATE users SET profile_image = ? WHERE id = ?', [profileUrl, req.user.id]);

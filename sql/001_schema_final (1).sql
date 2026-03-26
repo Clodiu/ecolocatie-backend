@@ -159,7 +159,7 @@ CREATE TABLE config (
   bounds_south      DECIMAL(10, 7) COMMENT 'Bounding box Galați - sud',
   bounds_east       DECIMAL(10, 7) COMMENT 'Bounding box Galați - est',
   bounds_west       DECIMAL(10, 7) COMMENT 'Bounding box Galați - vest',
-  active_model      VARCHAR(100)   DEFAULT 'model_cnn_custom.h5' COMMENT 'Modelul AI activ pentru clasificare'
+  active_model      VARCHAR(100)   DEFAULT 'model_densenet121.h5' COMMENT 'Modelul AI activ pentru clasificare'
 ) ENGINE=InnoDB;
 
 -- ============================================

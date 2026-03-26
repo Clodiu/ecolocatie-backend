@@ -1,5 +1,6 @@
 const express = require('express');
 const { exec } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const db = require('../config/db');
@@ -11,12 +12,12 @@ const router = express.Router();
 (async () => {
   try {
     await axios.post(`${process.env.OLLAMA_URL}/api/chat`, {
-      model: 'qwen2.5:0.5b',
+      model: 'gemma3:1b',
       messages: [{ role: 'user', content: 'test' }],
       stream: false,
-      options: { num_predict: 1 }
+      options: { num_predict: 1, num_thread: 4 }
     }, { timeout: 60000 });
-    console.log('✅ Ollama qwen2.5:0.5b preîncărcat');
+    console.log('✅ Ollama gemma3:1b preîncărcat');
   } catch { console.log('⚠️ Ollama warmup eșuat (va încărca la prima cerere)'); }
 })();
 
@@ -60,13 +61,16 @@ router.post('/identify', upload.single('image'), async (req, res) => {
 
     // Citește modelul activ din config
     const [[config]] = await db.query('SELECT active_model FROM config WHERE id = 1');
-    const activeModel = config?.active_model || 'model_cnn_custom.h5';
+    const activeModel = config?.active_model || 'model_densenet121.h5';
 
     // Rulează scriptul Python cu modelul activ
     exec(
       `${process.env.PYTHON_PATH || 'python'} "${pythonScript}" "${imagePath}" "${activeModel}"`,
       { timeout: 30000 },
       async (error, stdout, stderr) => {
+        // Sterge imaginea temporara dupa clasificare
+        try { fs.unlinkSync(imagePath); } catch {}
+
         if (error) {
           console.error('Python error:', stderr);
           return res.status(500).json({ error: 'Eroare la clasificarea imaginii.' });
@@ -98,8 +102,7 @@ router.post('/identify', upload.single('image'), async (req, res) => {
                 ...plant,
                 benefits: benefits.map(b => b.benefit),
                 contraindications: contras.map(c => c.contraindication)
-              },
-              image_url: `/uploads/images/${req.file.filename}`
+              }
             });
           } else {
             res.json({
@@ -134,17 +137,36 @@ router.post('/chat', async (req, res) => {
     const isEnglish = lang === 'en' || (!lang && /\b(what|how|which|can|does|is|are|the|for|with|plant|benefit|help)\b/i.test(question));
     const language = isEnglish ? 'en' : 'ro';
 
-    // 1. Caută plante relevante în DB pe baza cuvintelor cheie din întrebare
-    const searchTerms = question.toLowerCase()
-      .replace(/[?!.,]/g, '')
-      .split(' ')
+    // 1. Cauta plante relevante in DB pe baza cuvintelor cheie din intrebare
+    // Normalizeaza diacritice: musetelul -> musteelul, dar si musetel -> mustetel
+    function removeDiacritics(str) {
+      return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    // Sterge sufixe romanesti comune (articole, cazuri)
+    function stemRo(word) {
+      return word
+        .replace(/(ului|ului|ilor|elor|ului)$/i, '')
+        .replace(/(ul|ua|ea|le|ii|ei)$/i, '')
+        .replace(/(a|e|i)$/i, '');
+    }
+
+    const rawTerms = removeDiacritics(question.toLowerCase())
+      .replace(/[?!.,;:'"]/g, '')
+      .split(/\s+/)
       .filter(w => w.length > 3);
+
+    // Pastreaza atat termenul original cat si cel fara sufix
+    const searchTerms = [...new Set(rawTerms.flatMap(w => {
+      const stemmed = stemRo(w);
+      return stemmed.length >= 3 ? [w, stemmed] : [w];
+    }))];
 
     let plantsContext = [];
 
-    // Caută în beneficii, contraindicații, descriere — un singur query cu OR pe toți termenii
+    // Cauta in beneficii, contraindicatii, descriere — collate general_ci ignora diacritice
     const likeConditions = searchTerms.map(() =>
-      '(pb.benefit LIKE ? OR p.name_ro LIKE ? OR p.name_en LIKE ? OR p.description LIKE ?)'
+      '(pb.benefit COLLATE utf8mb4_general_ci LIKE ? OR p.name_ro COLLATE utf8mb4_general_ci LIKE ? OR p.name_en COLLATE utf8mb4_general_ci LIKE ? OR p.description COLLATE utf8mb4_general_ci LIKE ?)'
     ).join(' OR ');
 
     const likeParams = searchTerms.flatMap(t => {
@@ -171,7 +193,30 @@ router.post('/chat', async (req, res) => {
 
     const uniquePlants = [...new Map(plantsContext.map(p => [p.name_ro, p])).values()].slice(0, 3);
 
-    // Dacă nu s-au găsit plante specifice, trimite doar numele plantelor ca context scurt
+    // Daca nu s-au gasit plante specifice, cauta si dupa numele plantei direct
+    if (uniquePlants.length === 0) {
+      const nameConditions = searchTerms.map(() => '(p.name_ro COLLATE utf8mb4_general_ci LIKE ? OR p.name_en COLLATE utf8mb4_general_ci LIKE ? OR p.name_latin COLLATE utf8mb4_general_ci LIKE ?)').join(' OR ');
+      const nameParams = searchTerms.flatMap(t => { const term = `%${t}%`; return [term, term, term]; });
+
+      if (nameConditions) {
+        const [results] = await db.query(`
+          SELECT DISTINCT p.name_ro, p.name_latin, p.description, p.preparation,
+                 GROUP_CONCAT(DISTINCT pu.part SEPARATOR '; ') as usable_parts,
+                 GROUP_CONCAT(DISTINCT pb.benefit SEPARATOR '; ') as benefits,
+                 GROUP_CONCAT(DISTINCT pc.contraindication SEPARATOR '; ') as contraindications
+          FROM plants p
+          LEFT JOIN plant_benefits pb ON p.id = pb.plant_id
+          LEFT JOIN plant_contraindications pc ON p.id = pc.plant_id
+          LEFT JOIN plant_usable_parts pu ON p.id = pu.plant_id
+          WHERE ${nameConditions}
+          GROUP BY p.id
+          LIMIT 3
+        `, nameParams);
+        uniquePlants.push(...results);
+      }
+    }
+
+    // Daca tot nu s-a gasit nimic, trimite lista scurta de plante disponibile
     if (uniquePlants.length === 0) {
       const [allPlants] = await db.query(`
         SELECT p.name_ro, p.name_latin,
@@ -195,7 +240,7 @@ Preparare: ${p.preparation || 'N/A'}`
     // 3. Trimite la Ollama (prin queue — o singură cerere la un moment dat)
     const ollamaResponse = await enqueue(() =>
       axios.post(`${process.env.OLLAMA_URL}/api/chat`, {
-        model: 'qwen2.5:0.5b',
+        model: 'gemma3:1b',
         messages: [
           {
             role: 'system',
@@ -227,11 +272,12 @@ ${context}`
         stream: false,
         keep_alive: '30m',
         options: {
-          num_predict: 250,
-          num_ctx: 2048,
-          temperature: 0.7
+          num_predict: 400,
+          num_ctx: 4096,
+          temperature: 0.4,
+          num_thread: 4
         }
-      }, { timeout: 30000 })
+      }, { timeout: 60000 })
     );
 
     const answer = ollamaResponse.data.message.content;

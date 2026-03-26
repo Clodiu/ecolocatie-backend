@@ -43,6 +43,8 @@ const adminRoutes = require('./routes/admin');
 
 const userRoutes = require('./routes/users');
 const configRoutes = require('./routes/config');
+const notificationRoutes = require('./routes/notifications');
+const favoriteRoutes = require('./routes/favorites');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/plants', plantRoutes);
@@ -53,6 +55,8 @@ app.use('/api', aiRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/favorites', favoriteRoutes);
 
 // ============================================
 // RUTA PRINCIPALĂ

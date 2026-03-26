@@ -2,8 +2,8 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Creează directorul dacă nu există
-const uploadDir = process.env.UPLOAD_DIR || './uploads/images';
+// Creează directorul dacă nu există — cale absoluta pentru consistenta
+const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads/images');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }

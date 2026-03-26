@@ -11,16 +11,16 @@ const UPLOADS_ROOT = path.join(__dirname, '../../uploads');
 
 const router = express.Router();
 
-// POST /api/auth/register
-router.post('/register', async (req, res) => {
+// POST /api/auth/register (accepta multipart/form-data cu imagine optionala)
+router.post('/register', upload.single('image'), async (req, res) => {
   try {
     const { username, first_name, last_name, email, password } = req.body;
 
     if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, email și parola sunt obligatorii.' });
+      return res.status(400).json({ error: 'Username, email si parola sunt obligatorii.' });
     }
 
-    // Verifică dacă username sau email există deja
+    // Verifica daca username sau email exista deja
     const [existing] = await db.query(
       'SELECT id FROM users WHERE username = ? OR email = ?',
       [username, email]
@@ -35,13 +35,29 @@ router.post('/register', async (req, res) => {
       [username, first_name || null, last_name || null, email, password_hash]
     );
 
+    const userId = result.insertId;
+    let profileImage = null;
+
+    // Daca s-a trimis imagine de profil, o salvam
+    if (req.file) {
+      const userDir = path.join(UPLOADS_ROOT, 'images', 'users', String(userId));
+      fs.mkdirSync(userDir, { recursive: true });
+
+      const ext = path.extname(req.file.originalname);
+      const filename = `avatar${ext}`;
+      fs.renameSync(req.file.path, path.join(userDir, filename));
+
+      profileImage = `/images/users/${userId}/${filename}`;
+      await db.query('UPDATE users SET profile_image = ? WHERE id = ?', [profileImage, userId]);
+    }
+
     const token = jwt.sign(
-      { id: result.insertId, username, role: 'user' },
+      { id: userId, username, role: 'user' },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
-    res.status(201).json({ token, user: { id: result.insertId, username, first_name, last_name, email, role: 'user', profile_image: null } });
+    res.status(201).json({ token, user: { id: userId, username, first_name, last_name, email, role: 'user', profile_image: profileImage } });
   } catch (err) {
     console.error('Register error:', err);
     res.status(500).json({ error: 'Eroare server.' });
@@ -54,18 +70,24 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email și parolă sunt obligatorii.' });
+      return res.status(400).json({ error: 'Email si parola sunt obligatorii.' });
     }
 
     const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
     if (users.length === 0) {
-      return res.status(401).json({ error: 'Email sau parolă incorectă.' });
+      return res.status(401).json({ error: 'Email sau parola incorecta.' });
     }
 
     const user = users[0];
+
+    // Verifica daca contul e activ
+    if (!user.is_active) {
+      return res.status(403).json({ error: 'Contul este dezactivat. Contactati un administrator.' });
+    }
+
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
-      return res.status(401).json({ error: 'Email sau parolă incorectă.' });
+      return res.status(401).json({ error: 'Email sau parola incorecta.' });
     }
 
     const token = jwt.sign(
@@ -92,10 +114,81 @@ router.get('/me', auth, async (req, res) => {
       [req.user.id]
     );
     if (users.length === 0) {
-      return res.status(404).json({ error: 'Utilizator negăsit.' });
+      return res.status(404).json({ error: 'Utilizator negasit.' });
     }
     res.json(users[0]);
   } catch (err) {
+    res.status(500).json({ error: 'Eroare server.' });
+  }
+});
+
+// PUT /api/auth/profile — Actualizare date profil
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { first_name, last_name, phone, birth_date } = req.body;
+
+    await db.query(
+      `UPDATE users SET
+        first_name = COALESCE(?, first_name),
+        last_name = COALESCE(?, last_name),
+        phone = COALESCE(?, phone),
+        birth_date = COALESCE(?, birth_date)
+       WHERE id = ?`,
+      [first_name || null, last_name || null, phone || null, birth_date || null, req.user.id]
+    );
+
+    const [users] = await db.query(
+      'SELECT id, username, first_name, last_name, email, phone, birth_date, role, is_active, profile_image, created_at FROM users WHERE id = ?',
+      [req.user.id]
+    );
+
+    res.json(users[0]);
+  } catch (err) {
+    console.error('Profile update error:', err);
+    res.status(500).json({ error: 'Eroare server.' });
+  }
+});
+
+// PUT /api/auth/password — Schimbare parola
+router.put('/password', auth, async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: 'Parola curenta si parola noua sunt obligatorii.' });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'Parola noua trebuie sa aiba minim 6 caractere.' });
+    }
+
+    const [users] = await db.query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Utilizator negasit.' });
+    }
+
+    const valid = await bcrypt.compare(current_password, users[0].password_hash);
+    if (!valid) {
+      return res.status(400).json({ error: 'Parola curenta este gresita.' });
+    }
+
+    const newHash = await bcrypt.hash(new_password, 10);
+    await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, req.user.id]);
+
+    res.json({ message: 'Parola a fost schimbata cu succes.' });
+  } catch (err) {
+    console.error('Password change error:', err);
+    res.status(500).json({ error: 'Eroare server.' });
+  }
+});
+
+// PUT /api/auth/deactivate — Dezactivare cont propriu
+router.put('/deactivate', auth, async (req, res) => {
+  try {
+    await db.query('UPDATE users SET is_active = FALSE WHERE id = ?', [req.user.id]);
+    res.json({ message: 'Contul a fost dezactivat.' });
+  } catch (err) {
+    console.error('Deactivate error:', err);
     res.status(500).json({ error: 'Eroare server.' });
   }
 });
@@ -126,7 +219,7 @@ router.put('/profile-image', auth, upload.single('image'), async (req, res) => {
     const profileUrl = `/images/users/${req.user.id}/${filename}`;
     await db.query('UPDATE users SET profile_image = ? WHERE id = ?', [profileUrl, req.user.id]);
 
-    res.json({ profile_image: profileUrl, message: 'Imagine de profil actualizată.' });
+    res.json({ profile_image: profileUrl, message: 'Imagine de profil actualizata.' });
   } catch (err) {
     console.error('Profile image error:', err);
     res.status(500).json({ error: 'Eroare server.' });
@@ -141,7 +234,7 @@ router.delete('/profile-image', auth, async (req, res) => {
       fs.rmSync(userDir, { recursive: true });
     }
     await db.query('UPDATE users SET profile_image = NULL WHERE id = ?', [req.user.id]);
-    res.json({ message: 'Imagine de profil ștearsă.' });
+    res.json({ message: 'Imagine de profil stearsa.' });
   } catch (err) {
     console.error('Delete profile image error:', err);
     res.status(500).json({ error: 'Eroare server.' });

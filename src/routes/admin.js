@@ -12,8 +12,8 @@ router.get('/users', auth, adminOnly, async (req, res) => {
     let params = [];
 
     if (search) {
-      query += ' AND (username LIKE ? OR email LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
+      query += ' AND (username LIKE ? OR email LIKE ? OR first_name LIKE ? OR last_name LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
     if (role) {
       query += ' AND role = ?';
@@ -84,12 +84,15 @@ router.get('/pois/pending', auth, adminOnly, async (_req, res) => {
 router.get('/stats', auth, adminOnly, async (_req, res) => {
   try {
     const [[{ totalUsers }]] = await db.query('SELECT COUNT(*) as totalUsers FROM users');
+    const [[{ activeUsers }]] = await db.query('SELECT COUNT(*) as activeUsers FROM users WHERE is_active = TRUE');
     const [[{ totalPlants }]] = await db.query('SELECT COUNT(*) as totalPlants FROM plants');
     const [[{ totalPois }]] = await db.query('SELECT COUNT(*) as totalPois FROM points_of_interest');
+    const [[{ approvedPois }]] = await db.query("SELECT COUNT(*) as approvedPois FROM points_of_interest WHERE status = 'approved'");
     const [[{ pendingPois }]] = await db.query("SELECT COUNT(*) as pendingPois FROM points_of_interest WHERE status = 'pending'");
+    const [[{ rejectedPois }]] = await db.query("SELECT COUNT(*) as rejectedPois FROM points_of_interest WHERE status = 'rejected'");
     const [[{ totalComments }]] = await db.query('SELECT COUNT(*) as totalComments FROM comments');
 
-    res.json({ totalUsers, totalPlants, totalPois, pendingPois, totalComments });
+    res.json({ totalUsers, activeUsers, totalPlants, totalPois, approvedPois, pendingPois, rejectedPois, totalComments });
   } catch (err) {
     res.status(500).json({ error: 'Eroare server.' });
   }

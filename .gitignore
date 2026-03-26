@@ -1,0 +1,7 @@
+node_modules/
+.env
+uploads/images/*
+!uploads/images/.gitkeep
+python/model.h5
+python/__pycache__/
+*.log

@@ -27,7 +27,7 @@ app.use('/images', express.static(path.join(__dirname, '../uploads/images')));
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minute
-  max: 100
+  max: 1000
 });
 app.use('/api/', limiter);
 

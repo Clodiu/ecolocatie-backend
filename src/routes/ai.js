@@ -7,6 +7,19 @@ const upload = require('../middleware/upload');
 
 const router = express.Router();
 
+// Warmup — preîncarcă modelul în RAM la pornirea serverului
+(async () => {
+  try {
+    await axios.post(`${process.env.OLLAMA_URL}/api/chat`, {
+      model: 'qwen2.5:0.5b',
+      messages: [{ role: 'user', content: 'test' }],
+      stream: false,
+      options: { num_predict: 1 }
+    }, { timeout: 60000 });
+    console.log('✅ Ollama qwen2.5:0.5b preîncărcat');
+  } catch { console.log('⚠️ Ollama warmup eșuat (va încărca la prima cerere)'); }
+})();
+
 // ============================================
 // QUEUE — procesează o singură cerere Ollama la un moment dat
 // ============================================
@@ -129,8 +142,17 @@ router.post('/chat', async (req, res) => {
 
     let plantsContext = [];
 
-    // Caută în beneficii, contraindicații, descriere, părți utilizabile
-    for (const term of searchTerms) {
+    // Caută în beneficii, contraindicații, descriere — un singur query cu OR pe toți termenii
+    const likeConditions = searchTerms.map(() =>
+      '(pb.benefit LIKE ? OR p.name_ro LIKE ? OR p.name_en LIKE ? OR p.description LIKE ?)'
+    ).join(' OR ');
+
+    const likeParams = searchTerms.flatMap(t => {
+      const term = `%${t}%`;
+      return [term, term, term, term];
+    });
+
+    if (likeConditions) {
       const [results] = await db.query(`
         SELECT DISTINCT p.name_ro, p.name_latin, p.description, p.preparation,
                GROUP_CONCAT(DISTINCT pu.part SEPARATOR '; ') as usable_parts,
@@ -140,27 +162,22 @@ router.post('/chat', async (req, res) => {
         LEFT JOIN plant_benefits pb ON p.id = pb.plant_id
         LEFT JOIN plant_contraindications pc ON p.id = pc.plant_id
         LEFT JOIN plant_usable_parts pu ON p.id = pu.plant_id
-        WHERE pb.benefit LIKE ? OR p.name_ro LIKE ? OR p.description LIKE ?
-              OR pu.part LIKE ? OR pc.contraindication LIKE ?
+        WHERE ${likeConditions}
         GROUP BY p.id
-        LIMIT 5
-      `, [`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`]);
-
+        LIMIT 3
+      `, likeParams);
       plantsContext.push(...results);
     }
 
-    // Elimină duplicatele
-    const uniquePlants = [...new Map(plantsContext.map(p => [p.name_ro, p])).values()];
+    const uniquePlants = [...new Map(plantsContext.map(p => [p.name_ro, p])).values()].slice(0, 3);
 
-    // Dacă nu s-au găsit plante specifice, trimite toate plantele ca context
+    // Dacă nu s-au găsit plante specifice, trimite doar numele plantelor ca context scurt
     if (uniquePlants.length === 0) {
       const [allPlants] = await db.query(`
         SELECT p.name_ro, p.name_latin,
-               GROUP_CONCAT(DISTINCT pu.part SEPARATOR '; ') as usable_parts,
                GROUP_CONCAT(DISTINCT pb.benefit SEPARATOR '; ') as benefits
         FROM plants p
         LEFT JOIN plant_benefits pb ON p.id = pb.plant_id
-        LEFT JOIN plant_usable_parts pu ON p.id = pu.plant_id
         GROUP BY p.id
       `);
       uniquePlants.push(...allPlants);
@@ -178,7 +195,7 @@ Preparare: ${p.preparation || 'N/A'}`
     // 3. Trimite la Ollama (prin queue — o singură cerere la un moment dat)
     const ollamaResponse = await enqueue(() =>
       axios.post(`${process.env.OLLAMA_URL}/api/chat`, {
-        model: 'gemma3:4b',
+        model: 'qwen2.5:0.5b',
         messages: [
           {
             role: 'system',
@@ -207,8 +224,14 @@ ${context}`
             content: question
           }
         ],
-        stream: false
-      })
+        stream: false,
+        keep_alive: '30m',
+        options: {
+          num_predict: 250,
+          num_ctx: 2048,
+          temperature: 0.7
+        }
+      }, { timeout: 30000 })
     );
 
     const answer = ollamaResponse.data.message.content;

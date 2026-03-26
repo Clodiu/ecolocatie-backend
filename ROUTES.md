@@ -155,7 +155,7 @@
 |--------|------|-------|--------------|-----------|
 | GET | `/api/pois` | -- | `?plant_id=&status=approved&lat=&lng=&radius=10&limit=50&offset=0` | Lista observatii (default: doar approved) |
 | GET | `/api/pois/:id` | -- | — | Detalii observatie cu comentarii si imagini |
-| POST | `/api/pois` | AUTH + UPLOAD | `plant_id, latitude, longitude, address?, comment?, image?` | Creeaza observatie noua (status: pending) |
+| POST | `/api/pois` | AUTH + UPLOAD | `plant_id, latitude, longitude, address?, comment?, ai_confidence?, image?` | Creeaza observatie noua (status: pending) |
 | PUT | `/api/pois/:id/status` | ADMIN | `{ "status": "approved" \| "rejected" }` | Aproba/respinge observatie |
 | DELETE | `/api/pois/:id` | AUTH (owner sau admin) | — | Sterge observatie + folderul cu imagini |
 

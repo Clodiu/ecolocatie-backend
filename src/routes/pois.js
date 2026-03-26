@@ -119,7 +119,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/pois - Creează POI (cu imagine opțională)
 router.post('/', auth, upload.single('image'), async (req, res) => {
   try {
-    const { plant_id, latitude, longitude, address, comment } = req.body;
+    const { plant_id, latitude, longitude, address, comment, ai_confidence } = req.body;
 
     if (!plant_id || !latitude || !longitude) {
       return res.status(400).json({ error: 'plant_id, latitude și longitude sunt obligatorii.' });
@@ -139,8 +139,8 @@ router.post('/', auth, upload.single('image'), async (req, res) => {
     }
 
     const [result] = await db.query(
-      'INSERT INTO points_of_interest (user_id, plant_id, latitude, longitude, address, comment) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, plant_id, latitude, longitude, finalAddress, comment]
+      'INSERT INTO points_of_interest (user_id, plant_id, latitude, longitude, address, comment, ai_confidence) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, plant_id, latitude, longitude, finalAddress, comment, ai_confidence || null]
     );
 
     const poiId = result.insertId;

@@ -14,7 +14,7 @@ const router = express.Router();
 // POST /api/auth/register (accepta multipart/form-data cu imagine optionala)
 router.post('/register', upload.single('image'), async (req, res) => {
   try {
-    const { username, first_name, last_name, email, password } = req.body;
+    const { username, first_name, last_name, email, password, phone, birth_date } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Username, email si parola sunt obligatorii.' });
@@ -31,8 +31,8 @@ router.post('/register', upload.single('image'), async (req, res) => {
 
     const password_hash = await bcrypt.hash(password, 10);
     const [result] = await db.query(
-      'INSERT INTO users (username, first_name, last_name, email, password_hash) VALUES (?, ?, ?, ?, ?)',
-      [username, first_name || null, last_name || null, email, password_hash]
+      'INSERT INTO users (username, first_name, last_name, email, password_hash, phone, birth_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [username, first_name || null, last_name || null, email, password_hash, phone || null, birth_date || null]
     );
 
     const userId = result.insertId;

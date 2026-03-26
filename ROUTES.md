@@ -21,7 +21,7 @@
 
 | Metoda | Ruta | Acces | Body | Descriere |
 |--------|------|-------|------|-----------|
-| POST | `/api/auth/register` | -- + UPLOAD | `username, email, password, first_name?, last_name?, image?` (multipart) | Inregistrare utilizator nou cu imagine de profil optionala. Returneaza JWT + user |
+| POST | `/api/auth/register` | -- + UPLOAD | `username, email, password, first_name?, last_name?, phone?, birth_date?, image?` (multipart) | Inregistrare utilizator nou cu imagine de profil optionala. Returneaza JWT + user |
 | POST | `/api/auth/login` | -- | `{ email, password }` | Autentificare. Returneaza JWT + user. Verifica `is_active` |
 | GET | `/api/auth/me` | AUTH | — | Profilul utilizatorului curent (toate campurile) |
 | PUT | `/api/auth/profile` | AUTH | `{ first_name?, last_name?, phone?, birth_date? }` | Actualizeaza datele profilului. Returneaza userul actualizat |
